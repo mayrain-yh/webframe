@@ -1,0 +1,119 @@
+python使用werkzeug编写一个简单的框架
+使用的werkzeug这个库
+Werkzeug基于WSGI标准，封装了许多web框架所需要的功能，如Request&Response，URL routing和其他的一些HTTP协议所需要的功能。flask就是借助Werkzeug为底层的web框架
+官方文档：https://werkzeug.palletsprojects.com/en/0.14.x/
+
+1.首先需要安装werkzeug：
+pip install Werkzeug 
+
+2.构建初始程序：
+#导入相关模块
+from werkzeug.wrappers import Response, Request
+from werkzeug.serving import run_simple
+
+2.定义一个继承object的类
+class Application(object):
+
+    def __init__(self):
+        pass
+	#定义一个可调用的对象	
+    def __call__(self, environ, start_response):
+        return self.application(environ, start_response)
+
+#@Request.application装饰器接受的参数是request
+   @Request.application
+    def application(self,request):
+        return Response("Hello world!")
+
+3.定义一个Rote类
+class Route():
+    def __init__(self):
+        self.url_map = Map([])
+        self.endpoint_dict = {}   #定义一个字典，记录endpoint和要调用的函数名之间的对应关系
+   
+
+#使用__call__把Route类变成一个可调用对象，
+    def __call__(self, rules, endpoint_value=0):
+        def wrapper(func):
+         #定义一个wrapper装饰器，这样在以后添加页面处理函数的之后直接添加装饰器，就能在url_map和end-point中添加对应关系
+            endpoint = endpoint_value
+            if not endpoint:
+                endpoint = func.__name__
+            self.url_map.add(Rule(rules, endpoint=endpoint))
+            self.endpoint_dict[endpoint] = func
+            return func
+        return wrapper
+
+
+class Application(object):     
+    #Application类实例化之后就能调用route的各项功能
+    def __init__(self):
+        self.route = Route()
+
+app = Application() #实例化route对象
+
+4.使用app来定义路由：
+#根据request传递的参数来返回，只能是int类型的数据
+@app.route('/id/<int:id>')
+def id(request):
+    urls = app.bind_to_environ(request.environ)
+    values = urls.match()[1]
+    return Response("id is: %s" % values["id"])
+
+
+下面贴出完整代码:
+
+from werkzeug.wrappers import Response, Request
+from werkzeug.serving import run_simple
+from werkzeug.routing import Map, Rule
+
+class Route():
+    def __init__(self):
+        self.url_map = Map([])
+        self.endpoint_dict = {}
+
+    def __call__(self, rules, endpoint_value=0):
+        def wrapper(func):
+            endpoint = endpoint_value
+            if not endpoint:
+                endpoint = func.__name__
+            self.url_map.add(Rule(rules, endpoint=endpoint))
+            self.endpoint_dict[endpoint] = func
+            return func
+        return wrapper
+
+class Application(object):
+
+    def __init__(self):
+        self.route = Route()
+
+    def __call__(self, environ, start_response):
+        return self.application(environ, start_response)
+
+    @Request.application
+    def application(self,request):
+        urls = self.bind_to_environ(request.environ)
+        endpoint, args = urls.match()
+        return self.route.endpoint_dict[endpoint](request)
+
+    def bind_to_environ(self, env):
+        return self.route.url_map.bind_to_environ(env)
+
+app = Application()
+
+@app.route('/id/<int:id>')
+def id(request):
+    urls = app.bind_to_environ(request.environ)
+    values = urls.match()[1]
+    return Response("id is: %s" % values["id"])
+
+@app.route('/current_url/', 'current_url')
+def current_url(request):
+    urls = app.bind_to_environ(request.environ)
+    url = urls.build("current_url")
+    return Response("current url is %s" % url)
+
+run_simple('localhost', 8000, app, use_reloader = True)
+
+
+参考文档：https://zhuanlan.zhihu.com/p/32936147?utm_source=wechat_session
